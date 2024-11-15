@@ -14,6 +14,7 @@ class Light {
   final Vector3 ambient = Vector3.zero();
   final Vector3 diffuse = Vector3.zero();
   final Vector3 specular = Vector3.zero();
+  bool on = true;
 
   void setColor(Color? color, double ambient, double diffuse, double specular) {
     final Vector3 c = (color != null) ? fromColor(color) : Vector3.all(1.0);
@@ -23,8 +24,9 @@ class Light {
   }
 
   Color shading(Vector3 viewPosition, Vector3 fragmentPosition, Vector3 normal, Material material) {
-    final Vector3 ambient = material.ambient.clone()..multiply(this.ambient*(material.emissivity*0.004));
-    final Vector3 lightDir = (viewPosition - fragmentPosition)..normalize();
+    final Vector3 ambient = material.ambient.clone()..multiply(this.ambient * (material.emissivity * 0.004));
+    // final Vector3 lightDir = (viewPosition - fragmentPosition)..normalize();
+    final Vector3 lightDir = (position - fragmentPosition)..normalize();
     final double diff = math.max(normal.dot(lightDir), 0);
     final Vector3 diffuse = (material.diffuse * diff)..multiply(this.diffuse);
     final Vector3 viewDir = (viewPosition - fragmentPosition)..normalize();

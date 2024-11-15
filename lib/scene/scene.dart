@@ -2,56 +2,82 @@ import 'dart:ui';
 import 'dart:typed_data';
 
 import 'package:flutter_cube/flutter_cube.dart';
+import 'package:flutter_cube/model/lines_object.dart';
+import 'package:flutter_cube/model/polygon_object.dart';
 import 'package:flutter_cube/scene/light.dart';
+import 'scene_controller.dart';
 
-enum RenderType{Wireframe,Normal}
-enum SortingType{Painters,HSR}
+enum RenderType { Wireframe, Normal }
+
+enum SortingType { Painters, HSR }
 
 typedef ObjectCreatedCallback = void Function(Object object);
+typedef ObjectInteractCallback = void Function(Object? object);
 
 class Scene {
   Scene({
-    VoidCallback? onUpdate, 
+    VoidCallback? onUpdate,
     ObjectCreatedCallback? onObjectCreated,
   }) {
     this._onUpdate = onUpdate;
     this._onObjectCreated = onObjectCreated;
-    world = Object(scene: this);
+    world = Object(scene: this, name: 'world');
   }
 
+  SceneController controller = SceneController();
   Light light = Light();
   Camera camera = Camera();
   late Object world;
+
   /// allows tapping and hovering on objects
   bool rayCasting = false;
   Image? texture;
   BlendMode blendMode = BlendMode.srcOver;
+
   /// Blend mode of texture image, change this to colorDodge if there is only a normal map to allow changing colors.
   BlendMode textureBlendMode = BlendMode.srcOver;
   VoidCallback? _onUpdate;
+
   /// Location of the tapped spot
   Offset? tapLocation;
+
   /// Location where the mouse is hovering
   Offset? hoverLocation;
   ObjectCreatedCallback? _onObjectCreated;
+  ObjectInteractCallback? _onObjectHovered;
+  ObjectInteractCallback? _onObjectTaped;
+
+  void set onObjectTaped(ObjectInteractCallback? onObjectTaped) {
+    _onObjectTaped = onObjectTaped;
+  }
+
+  void set onObjectHovered(ObjectInteractCallback? onObjectHovered) {
+    _onObjectHovered = onObjectHovered;
+  }
+
   int vertexCount = 0;
   int faceCount = 0;
   int polyCount = 0;
+
   /// name of the object tapped on
-  String? _objectTappedOn;
-  String? _prevObjectTappedOn;
+  Object? _objectTappedOn;
+  Object? _prevObjectTappedOn;
+
   /// name of the object hovering on
-  String? _objectHoveringOn;
+  Object? _objectHoveringOn;
   double? _currentSum;
   double? _currentHoverSum;
   bool _needsUpdateTexture = false;
 
   /// Turn on wreframe
   bool showWireframe = false;
+
   /// Turn on verticies
   bool showVerticies = false;
+
   /// show through model
   bool xray = false;
+
   /// show Texture
   bool showTexture = true;
 
@@ -59,27 +85,28 @@ class Scene {
 
   // calcuthe total number of vertices and facese
   void _calculateVertices(Object o) {
-    vertexCount += o.mesh.vertices.length*(showVerticies?2:1);
-    faceCount += o.mesh.indices.length*(showWireframe?3:1);
+    vertexCount += o.mesh.vertices.length * (showVerticies ? 2 : 1);
+    faceCount += o.mesh.indices.length * (showWireframe ? 3 : 1);
     final List<Object> children = o.children;
-    for (int i = 0; i < children.length; i++)
-      _calculateVertices(children[i]);
+    for (int i = 0; i < children.length; i++) _calculateVertices(children[i]);
   }
+
   /// returns the name of the object tapped on
-  String? clickedObject(){
+  Object? clickedObject() {
     _prevObjectTappedOn = _objectTappedOn;
     tapLocation = null;
     _currentSum = null;
 
     return _prevObjectTappedOn;
   }
+
   /// returns the name of the object hovered on
-  String? hoverObject(){
+  Object? hoverObject() {
     _currentHoverSum = null;
     return _objectHoveringOn;
   }
-  
-  RenderMesh makeRenderMesh(){
+
+  RenderMesh makeRenderMesh() {
     vertexCount = 0;
     faceCount = 0;
     polyCount = 0;
@@ -90,22 +117,19 @@ class Scene {
   }
 
   bool _isFrontFace(List<double> x, List<double> y, List<double> z) {
-    Vector3 P1 = Vector3(x[0],y[0],z[0]);
-    Vector3 P2 = Vector3(x[1],y[1],z[1]);
-    Vector3 P3 = Vector3(x[2],y[2],z[2]);
+    Vector3 P1 = Vector3(x[0], y[0], z[0]);
+    Vector3 P2 = Vector3(x[1], y[1], z[1]);
+    Vector3 P3 = Vector3(x[2], y[2], z[2]);
 
-    Vector3 V = P2-P1;
-    Vector3 W = P3-P1;
+    Vector3 V = P2 - P1;
+    Vector3 W = P3 - P1;
 
-    Vector3 N = Vector3(
-      ((V.y*W.z)-(V.z*W.y)),
-      ((V.z*W.x)-(V.x*W.z)),
-      ((V.x*W.y)-(V.y*W.x))
-    )..normalize();
-    Vector3 centroid = Vector3((x[0]+x[1]+x[2])/3,(y[0]+y[1]+y[2])/3,(z[0]+z[1]+z[2])/3)..normalize();
+    Vector3 N = Vector3(((V.y * W.z) - (V.z * W.y)), ((V.z * W.x) - (V.x * W.z)), ((V.x * W.y) - (V.y * W.x)))..normalize();
+    Vector3 centroid = Vector3((x[0] + x[1] + x[2]) / 3, (y[0] + y[1] + y[2]) / 3, (z[0] + z[1] + z[2]) / 3)..normalize();
     double dot = centroid.dot(N);
     return dot < 0;
   }
+
   bool _isClippedFace(List<double> x, List<double> y, List<double> z) {
     // clip if at least one vertex is outside the near and far plane
     if (z[0] < 0 || z[0] > 1 || z[1] < 0 || z[1] > 1 || z[2] < 0 || z[2] > 1) return true;
@@ -115,8 +139,7 @@ class Scene {
     if (x[0] < x[1]) {
       left = x[0];
       right = x[1];
-    } 
-    else {
+    } else {
       left = x[1];
       right = x[0];
     }
@@ -124,14 +147,13 @@ class Scene {
     if (left > 1) return true;
     if (right < x[2]) right = x[2];
     if (right < -1) return true;
-    
+
     double top;
     double bottom;
     if (y[0] < y[1]) {
       top = y[0];
       bottom = y[1];
-    } 
-    else {
+    } else {
       top = y[1];
       bottom = y[0];
     }
@@ -141,28 +163,31 @@ class Scene {
     if (bottom < -1) return true;
     return false;
   }
+
   //this is for checking what item has been tapped on
-  bool _isBelow(Offset p,List<double> x, List<double> y,Offset v){
-    double sign (double hx, double hy, double ix, double iy, double kx, double ky){
+  bool _isBelow(Offset p, List<double> x, List<double> y, Offset v) {
+    double sign(double hx, double hy, double ix, double iy, double kx, double ky) {
       return (hx - kx) * (iy - ky) - (ix - kx) * (hy - ky);
     }
+
     double d1, d2, d3;
     bool hasNeg, hasPos;
 
-    d1 = sign(p.dx, p.dy ,((1.0+x[0])*v.dx/2), ((1.0-y[0])*v.dy/2), ((1.0+x[1])*v.dx/2), ((1.0-y[1])*v.dy/2));
-    d2 = sign(p.dx, p.dy, ((1.0+x[1])*v.dx/2), ((1.0-y[1])*v.dy/2), ((1.0+x[2])*v.dx/2), ((1.0-y[2])*v.dy/2));
-    d3 = sign(p.dx, p.dy, ((1.0+x[2])*v.dx/2), ((1.0-y[2])*v.dy/2), ((1.0+x[0])*v.dx/2), ((1.0-y[0])*v.dy/2));
+    d1 = sign(p.dx, p.dy, ((1.0 + x[0]) * v.dx / 2), ((1.0 - y[0]) * v.dy / 2), ((1.0 + x[1]) * v.dx / 2), ((1.0 - y[1]) * v.dy / 2));
+    d2 = sign(p.dx, p.dy, ((1.0 + x[1]) * v.dx / 2), ((1.0 - y[1]) * v.dy / 2), ((1.0 + x[2]) * v.dx / 2), ((1.0 - y[2]) * v.dy / 2));
+    d3 = sign(p.dx, p.dy, ((1.0 + x[2]) * v.dx / 2), ((1.0 - y[2]) * v.dy / 2), ((1.0 + x[0]) * v.dx / 2), ((1.0 - y[0]) * v.dy / 2));
 
     hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
     hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
 
     return !(hasNeg && hasPos);
   }
+
   //painters algorithm sorts triangles that are in the top most z positions
-  int paintersAlgorithm(Triangle? a, Triangle? b){
+  int paintersAlgorithm(Triangle? a, Triangle? b) {
     //return b.sumOfZ.compareTo(a.sumOfZ);
-    if(a == null) return -1;
-    if(b == null) return -1;
+    if (a == null) return -1;
+    if (b == null) return -1;
     final double az = a.z;
     final double bz = b.z;
     //return (az-bz).round();
@@ -171,7 +196,7 @@ class Scene {
     return 0;
   }
 
-  Float64List storage(Vector3 vertices, Matrix4 transform){
+  Float64List storage(Vector3 vertices, Matrix4 transform) {
     final Vector4 v = Vector4.identity();
     // Conver Vector3 to Vector4
     final Float64List storage3 = vertices.storage;
@@ -182,16 +207,20 @@ class Scene {
     return v.storage;
   }
 
-  List<Triangle> renderObject(RenderMesh renderMesh, Object o, Matrix4 model, Matrix4 view, Matrix4 projection,[bool lightOn = true]) {
+  List<PointsObject> _tmpPointsObjects = [];
+  List<PolygonObject> _tmpPolygonObjects = [];
+  List<LinesObject> _tmpLinesObjects = [];
+
+  List<Triangle> renderObject(RenderMesh renderMesh, Object o, Matrix4 model, Matrix4 view, Matrix4 projection, [bool lightOn = true]) {
     if (!o.visiable) return [];
     model *= o.transform;
     List<Triangle> triangles = [];
-    final Matrix4 transform = projection*view*model;
+    final Matrix4 transform = projection * view * model;
 
     // apply transform and add vertices to renderMesh
     final double viewportWidth = camera.viewportWidth;
     final double viewportHeight = camera.viewportHeight;
-    final Offset viewport = Offset(viewportWidth,viewportHeight);
+    final Offset viewport = Offset(viewportWidth, viewportHeight);
 
     final Float32List positions = renderMesh.positions;
     final Float32List positionsZ = renderMesh.positionsZ;
@@ -201,7 +230,7 @@ class Scene {
 
     final int vertexOffset = renderMesh.vertexCount;
     final int vertexCount = vertices.length;
-    
+
     renderMesh.vertexCount += vertexCount;
 
     // add faces to renderMesh
@@ -221,13 +250,48 @@ class Scene {
 
     //texture information
     final Float32List renderTexcoords = renderMesh.texcoords;
-    final int? imageWidth = o.mesh.texture == null?null:o.mesh.textureRect.width.toInt();
-    final int? imageHeight = o.mesh.texture == null?null:o.mesh.textureRect.height.toInt();
-    final double? imageLeft = o.mesh.texture == null?null:o.mesh.textureRect.left;
-    final double? imageTop = o.mesh.texture == null?null:o.mesh.textureRect.top;
-    final List<Offset>? texcoords = o.mesh.texture == null?null:o.mesh.texcoords;
+    final int? imageWidth = o.mesh.texture == null ? null : o.mesh.textureRect.width.toInt();
+    final int? imageHeight = o.mesh.texture == null ? null : o.mesh.textureRect.height.toInt();
+    final double? imageLeft = o.mesh.texture == null ? null : o.mesh.textureRect.left;
+    final double? imageTop = o.mesh.texture == null ? null : o.mesh.textureRect.top;
+    final List<Offset>? texcoords = o.mesh.texture == null ? null : o.mesh.texcoords;
 
-    for (int i = 0; i < indexCount; i++){
+    //没有顶点，只有坐标
+    if (indexCount == 0) {
+      List<double> x = [];
+      List<double> y = [];
+      List<double> z = [];
+      Float32List _positions = Float32List(vertexCount * 2);
+      for (int i = 0; i < vertexCount; i++) {
+        Float64List storage4 = storage(vertices[i], transform);
+        double w = storage4.length > 3 ? storage4[3] : 1.0;
+        double posx = storage4.length > 3 ? storage4[0] / w : storage4[0] / (viewportWidth / 2) - 1.0;
+        double posy = storage4.length > 3 ? storage4[1] / w : -(storage4[1] / (viewportHeight / 2) - 1.0);
+        double posz = storage4.length > 3 ? storage4[2] / w : storage4[2] / (camera.far / 2) + 0.1;
+        x.add(posx);
+        y.add(posy);
+        z.add(posz);
+        _positions[i * 2] = storage4.length > 3 ? ((1.0 + posx) * viewportWidth / 2) : storage4[0];
+        _positions[i * 2 + 1] = storage4.length > 3 ? ((1.0 - posy) * viewportHeight / 2) : storage4[1];
+      }
+
+      if (o is PointsObject) {
+        o.mesh.drawingPoints = _positions;
+        _tmpPointsObjects.add(o);
+      } else if (o is PolygonObject || o is LinesObject) {
+        // final bool isFF = x.length > 2 && _isFrontFace(x, y, z);
+        // if (!isFF) {
+        o.mesh.drawingPoints = _positions;
+        if (o is PolygonObject) {
+          _tmpPolygonObjects.add(o);
+        } else if (o is LinesObject) {
+          _tmpLinesObjects.add(o);
+        }
+        // }
+      }
+    }
+
+    for (int i = 0; i < indexCount; i++) {
       final Triangle p = indices[i];
       List<int> vertexes = [];
       List<double> x = [];
@@ -239,25 +303,25 @@ class Scene {
 
       double sumOfZ = 0;
 
-      for(int j = 0; j < p.vertexes.length;j++){
+      for (int j = 0; j < p.vertexes.length; j++) {
         final vertex = vertexOffset + p.vertexes[j];
         vertexes.add(vertex);
-        
+
         Float64List storage4 = storage(vertices[p.vertexes[j]], transform);
-        double w = storage4.length > 3?storage4[3]:1.0;
-        double posx =  storage4.length > 3?storage4[0]/w:storage4[0]/(viewportWidth / 2)-1.0;
-        double posy =  storage4.length > 3?storage4[1]/w:-(storage4[1]/(viewportHeight / 2)-1.0);
-        positionsZ[vertex] = storage4.length > 3?storage4[2]/w:storage4[2]/(camera.far/2)+0.1;
+        double w = storage4.length > 3 ? storage4[3] : 1.0;
+        double posx = storage4.length > 3 ? storage4[0] / w : storage4[0] / (viewportWidth / 2) - 1.0;
+        double posy = storage4.length > 3 ? storage4[1] / w : -(storage4[1] / (viewportHeight / 2) - 1.0);
+        positionsZ[vertex] = storage4.length > 3 ? storage4[2] / w : storage4[2] / (camera.far / 2) + 0.1;
         x.add(posx);
         y.add(posy);
         z.add(positionsZ[vertex]);
-        positions[vertex * 2] = storage4.length > 3?((1.0 + posx) * viewportWidth / 2):storage4[0];
-        positions[vertex * 2 + 1] = storage4.length > 3?((1.0 - posy) * viewportHeight / 2):storage4[1];
+        positions[vertex * 2] = storage4.length > 3 ? ((1.0 + posx) * viewportWidth / 2) : storage4[0];
+        positions[vertex * 2 + 1] = storage4.length > 3 ? ((1.0 - posy) * viewportHeight / 2) : storage4[1];
         xp.add(positions[vertex * 2]);
-        yp.add(positions[vertex * 2+1]);
+        yp.add(positions[vertex * 2 + 1]);
         sumOfZ += positionsZ[vertex];
 
-        if(o.lighting && lightOn){
+        if (o.lighting && lightOn) {
           final Vector3 a = Vector3.zero();
           final Vector3 an = Vector3.zero();
 
@@ -267,22 +331,21 @@ class Scene {
             ..applyMatrix4(normalTransform)
             ..normalize();
 
-          if(normals.isNotEmpty)
+          if (normals.isNotEmpty)
             an
-            ..setFrom(normals[p.normals![j]])
-            ..applyMatrix4(normalTransform)
-            ..normalize();
+              ..setFrom(normals[p.normals![j]])
+              ..applyMatrix4(normalTransform)
+              ..normalize();
           else
             an.setFrom(normal);
-          
+
           a..applyMatrix4(normalTransform);
           Color color = light.shading(viewPosition, a, an, material);
           renderColors[vertex] = color.value;
-        } 
-        else {
+        } else {
           if (vertexCount != o.mesh.colors.length)
             renderColors[vertex] = colorValue;
-          else 
+          else
             renderColors[vertex] = colors[i].value;
         }
 
@@ -292,41 +355,37 @@ class Scene {
           final double y = (1.0 - t.dy) * imageHeight! + imageTop!;
           renderTexcoords[vertex * 2] = x;
           renderTexcoords[vertex * 2 + 1] = y;
-        } 
-        else {
+        } else {
           renderTexcoords[vertex * 2] = 0;
           renderTexcoords[vertex * 2 + 1] = 0;
         }
       }
 
-      final bool isFF = !_isFrontFace(x,y,z);
+      final bool isFF = !_isFrontFace(x, y, z);
 
-      if(!culling || isFF || xray){
+      if (!culling || isFF || xray) {
         bool showFace = false;
-        if(xray || o.xray || (showWireframe || showVerticies) && isFF)
-          showFace = true;
-        if (!_isClippedFace(x,y,z)) {
+        if (xray || o.xray || (showWireframe || showVerticies) && isFF) showFace = true;
+        if (!_isClippedFace(x, y, z)) {
           double zHeight = sumOfZ;
-          renderIndices[indexOffset + i] = Triangle(vertexes,null,null,zHeight,showFace);
+          renderIndices[indexOffset + i] = Triangle(vertexes, null, null, zHeight, showFace);
           triangles.add(renderIndices[indexOffset + i]!);
-          if(tapLocation != null && _isBelow(tapLocation!,x,y,viewport)){
-            if(_currentSum == null){
+          if (tapLocation != null && _isBelow(tapLocation!, x, y, viewport)) {
+            if (_currentSum == null) {
               _currentSum = sumOfZ;
-              _objectTappedOn = o.name;
-            }
-            else if(_currentSum! > sumOfZ){
+              _objectTappedOn = o;
+            } else if (_currentSum! > sumOfZ) {
               _currentSum = sumOfZ;
-              _objectTappedOn = o.name;
+              _objectTappedOn = o;
             }
           }
-          if(hoverLocation != null && _isBelow(hoverLocation!,x,y,viewport)){
-            if(_currentHoverSum == null){
+          if (hoverLocation != null && _isBelow(hoverLocation!, x, y, viewport)) {
+            if (_currentHoverSum == null) {
               _currentHoverSum = sumOfZ;
-              _objectHoveringOn = o.name;
-            }
-            else if(_currentHoverSum! > sumOfZ){
+              _objectHoveringOn = o;
+            } else if (_currentHoverSum! > sumOfZ) {
               _currentHoverSum = sumOfZ;
-              _objectHoveringOn = o.name;
+              _objectHoveringOn = o;
             }
           }
         }
@@ -336,30 +395,36 @@ class Scene {
 
     // render children
     List<Object> children = o.children;
-    for (int i = 0; i < children.length; i++)
+    for (int i = 0; i < children.length; i++) {
       triangles += renderObject(renderMesh, children[i], model, view, projection, lightOn);
+    }
 
     return triangles;
-  } 
+  }
+
   void render(Canvas canvas, Size size) {
     _objectHoveringOn = null;
+    _objectTappedOn = null;
     // check if texture needs to update
-    if (_needsUpdateTexture){
+    if (_needsUpdateTexture) {
       _needsUpdateTexture = false;
       _updateTexture();
     }
+    _tmpPointsObjects.clear();
+    _tmpPolygonObjects.clear();
+    _tmpLinesObjects.clear();
     // create render mesh from objects
     final renderMesh = makeRenderMesh();
-    final List<Triangle?> renderPolys = renderObject(renderMesh, world, Matrix4.identity(), camera.lookAtMatrix, camera.projectionMatrix);
+    final List<Triangle?> renderPolys = renderObject(renderMesh, world, Matrix4.identity(), camera.lookAtMatrix, camera.projectionMatrix, light.on);
     final int indexCount = renderPolys.length;
     final Uint16List indices = Uint16List(indexCount * 3);
 
-    renderPolys.sort((Triangle? a, Triangle? b){
-      return paintersAlgorithm(a,b);
+    renderPolys.sort((Triangle? a, Triangle? b) {
+      return paintersAlgorithm(a, b);
     });
 
     for (int i = 0; i < indexCount; i++) {
-      if(renderPolys[i] != null){
+      if (renderPolys[i] != null) {
         final int index0 = i * 3;
         final int index1 = index0 + 1;
         final int index2 = index0 + 2;
@@ -371,88 +436,126 @@ class Scene {
       }
     }
 
-    if((!showVerticies && !showWireframe) || xray){
-      _drwaVert(
-        canvas, 
-        renderMesh.positions, 
+    if ((!showVerticies && !showWireframe) || xray) {
+      _drawVert(
+        canvas,
+        renderMesh.positions,
         renderMesh.texcoords,
-        renderMesh.colors, 
+        renderMesh.colors,
         indices,
-        renderMesh.texture
+        renderMesh.texture,
       );
     }
-    if(showVerticies || showWireframe){
-      int k =0 ;
-      for (int j = 0; j < indices.length; j=j+3) {
+    if (showVerticies || showWireframe) {
+      int k = 0;
+      for (int j = 0; j < indices.length; j = j + 3) {
         final Float32List temp = Float32List(6);
-        temp[0] = renderMesh.positions[indices[j]*2];
-        temp[1] = renderMesh.positions[indices[j]*2+1];
-        temp[2] = renderMesh.positions[indices[j+1]*2];
-        temp[3] = renderMesh.positions[indices[j+1]*2+1];
-        temp[4] = renderMesh.positions[indices[j+2]*2];
-        temp[5] = renderMesh.positions[indices[j+2]*2+1];
+        temp[0] = renderMesh.positions[indices[j] * 2];
+        temp[1] = renderMesh.positions[indices[j] * 2 + 1];
+        temp[2] = renderMesh.positions[indices[j + 1] * 2];
+        temp[3] = renderMesh.positions[indices[j + 1] * 2 + 1];
+        temp[4] = renderMesh.positions[indices[j + 2] * 2];
+        temp[5] = renderMesh.positions[indices[j + 2] * 2 + 1];
 
-        if(!xray){
-          final Float32List? tex = (renderMesh.texture == null)?null:Float32List(6);
+        if (!xray) {
+          final Float32List? tex = (renderMesh.texture == null) ? null : Float32List(6);
           final Int32List colors = Int32List(3);
           colors[0] = renderMesh.colors[indices[j]];
-          colors[1] = renderMesh.colors[indices[j+1]];
-          colors[2] = renderMesh.colors[indices[j+2]];
+          colors[1] = renderMesh.colors[indices[j + 1]];
+          colors[2] = renderMesh.colors[indices[j + 2]];
 
-          if(renderMesh.texture != null){
-            tex![0] = renderMesh.texcoords[indices[j]*2];
-            tex[1] = renderMesh.texcoords[indices[j]*2+1];
-            tex[2] = renderMesh.texcoords[indices[j+1]*2];
-            tex[3] = renderMesh.texcoords[indices[j+1]*2+1];
-            tex[4] = renderMesh.texcoords[indices[j+2]*2];
-            tex[5] = renderMesh.texcoords[indices[j+2]*2+1];
+          if (renderMesh.texture != null) {
+            tex![0] = renderMesh.texcoords[indices[j] * 2];
+            tex[1] = renderMesh.texcoords[indices[j] * 2 + 1];
+            tex[2] = renderMesh.texcoords[indices[j + 1] * 2];
+            tex[3] = renderMesh.texcoords[indices[j + 1] * 2 + 1];
+            tex[4] = renderMesh.texcoords[indices[j + 2] * 2];
+            tex[5] = renderMesh.texcoords[indices[j + 2] * 2 + 1];
           }
-          _drwaVert(
-            canvas, 
-            temp, 
-            tex,
-            colors, 
-            null, 
-            renderMesh.texture
-          );
+          _drawVert(canvas, temp, tex, colors, null, renderMesh.texture);
         }
-        if(showWireframe){
-          final Paint paint = new Paint()      
-          ..isAntiAlias = true
-          ..color = Color(0xff000000)
-          ..style = PaintingStyle.fill
-          ..strokeWidth = 0.5
-          ..blendMode = blendMode;
+        if (showWireframe) {
+          final Paint paint = Paint()
+            ..isAntiAlias = true
+            ..color = Color(0xffffffff)
+            ..style = PaintingStyle.fill
+            ..strokeWidth = 0.5
+            ..blendMode = blendMode;
 
           final Float32List temp2 = Float32List(8);
 
-          temp2[0] = renderMesh.positions[indices[j]*2];
-          temp2[1] = renderMesh.positions[indices[j]*2+1];
-          temp2[2] = renderMesh.positions[indices[j+1]*2];
-          temp2[3] = renderMesh.positions[indices[j+1]*2+1];
-          temp2[4] = renderMesh.positions[indices[j+2]*2];
-          temp2[5] = renderMesh.positions[indices[j+2]*2+1];
-          temp2[6] = renderMesh.positions[indices[j]*2];
-          temp2[7] = renderMesh.positions[indices[j]*2+1];
+          temp2[0] = renderMesh.positions[indices[j] * 2];
+          temp2[1] = renderMesh.positions[indices[j] * 2 + 1];
+          temp2[2] = renderMesh.positions[indices[j + 1] * 2];
+          temp2[3] = renderMesh.positions[indices[j + 1] * 2 + 1];
+          temp2[4] = renderMesh.positions[indices[j + 2] * 2];
+          temp2[5] = renderMesh.positions[indices[j + 2] * 2 + 1];
+          temp2[6] = renderMesh.positions[indices[j] * 2];
+          temp2[7] = renderMesh.positions[indices[j] * 2 + 1];
 
           canvas.drawRawPoints(PointMode.polygon, temp2, paint);
         }
-        if(showVerticies){
-          final Paint paint = new Paint()      
-          ..isAntiAlias = true
-          ..color = Color(0xffed9121)
-          ..style = PaintingStyle.fill
-          ..strokeWidth = 3
-          ..blendMode = blendMode;
+        if (showVerticies) {
+          final Paint paint = Paint()
+            ..isAntiAlias = true
+            ..color = Color(0xffed9121)
+            ..style = PaintingStyle.fill
+            ..strokeWidth = 3
+            ..strokeCap = StrokeCap.round
+            ..blendMode = blendMode;
 
           canvas.drawRawPoints(PointMode.points, temp, paint);
         }
         k++;
       }
     }
+
+    // draw points objects
+    final Paint paint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 3
+      ..blendMode = blendMode;
+    for (var obj in _tmpPointsObjects) {
+      obj.draw(canvas, blendMode, paint);
+    }
+
+    /// darw Polygon objects
+    final Paint paintPol = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..blendMode = blendMode;
+    for (var obj in _tmpPolygonObjects) {
+      obj.draw(canvas, blendMode, paintPol);
+    }
+
+    /// darw lines objects
+    final Paint paintLine = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..blendMode = blendMode;
+    for (var obj in _tmpLinesObjects) {
+      obj.draw(canvas, blendMode, paintLine);
+    }
+
+    postRender();
   }
 
-  void _drwaVert(Canvas canvas, Float32List positions, Float32List? texCoord,Int32List colors, Uint16List? indices, Image? texture){
+  void postRender() {
+    if (null != _objectTappedOn) _onObjectTaped?.call(_objectTappedOn);
+    if (null != _objectHoveringOn) _onObjectHovered?.call(_objectHoveringOn);
+    tapLocation = null;
+    _currentHoverSum = null;
+    _objectTappedOn = null;
+    _objectHoveringOn = null;
+  }
+
+  void _drawVert(Canvas canvas, Float32List positions, Float32List? texCoord, Int32List colors, Uint16List? indices, Image? texture) {
     final vertices = Vertices.raw(
       VertexMode.triangles,
       positions,
@@ -461,24 +564,27 @@ class Scene {
       indices: indices,
     );
 
-    final paint = Paint()
-    ..blendMode = xray?BlendMode.screen:blendMode;
-    
+    final paint = Paint()..blendMode = xray ? BlendMode.screen : blendMode;
+
     if (texture != null && showTexture) {
       final matrix4 = Matrix4.identity();
       final shader = ImageShader(texture, TileMode.clamp, TileMode.clamp, matrix4.storage, filterQuality: FilterQuality.high);
       paint.shader = shader;
     }
-    
-    canvas.drawVertices(vertices, xray?BlendMode.modulate:textureBlendMode, paint);
+
+    canvas.drawVertices(vertices, xray ? BlendMode.modulate : textureBlendMode, paint);
   }
+
   void objectCreated(Object object) {
     updateTexture();
     if (_onObjectCreated != null) _onObjectCreated!(object);
   }
+
   void update() {
-    if (_onUpdate != null) _onUpdate!();
+    // if (_onUpdate != null) _onUpdate!();
+    controller.notifyListeners();
   }
+
   void _getAllMesh(List<Mesh> meshes, Object object) {
     meshes.add(object.mesh);
     final List<Object> children = object.children;
@@ -486,6 +592,7 @@ class Scene {
       _getAllMesh(meshes, children[i]);
     }
   }
+
   /// Mark needs update texture
   void _updateTexture() async {
     final meshes = <Mesh>[];
@@ -493,40 +600,45 @@ class Scene {
     texture = await packingTexture(meshes);
     update();
   }
+
   /// Mark update tap loaction
   void updateTapLocation(Offset details) {
     _objectTappedOn = null;
+    _currentSum = null;
     tapLocation = details;
     update();
   }
+
   /// Mark update hover loaction
   void updateHoverLocation(Offset details) {
+    _currentHoverSum = null;
+    _objectHoveringOn = null;
+
     hoverLocation = details;
     update();
   }
+
   /// Mark needs update texture
   void updateTexture() {
     _needsUpdateTexture = true;
     update();
   }
+
   Future<Image> generateImage(Size size) async {
     final recorder = PictureRecorder();
-    final canvas = Canvas(
-      recorder,
-      Rect.fromLTWH(0,0,size.width, size.height)
-    );
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, size.width, size.height));
     // create render mesh from objects
     final renderMesh = makeRenderMesh();
-    final List<Triangle?> renderPolys = renderObject(renderMesh, world, Matrix4.identity(), camera.lookAtMatrix, camera.projectionMatrix);
+    final List<Triangle?> renderPolys = renderObject(renderMesh, world, Matrix4.identity(), camera.lookAtMatrix, camera.projectionMatrix, light.on);
     final int indexCount = renderPolys.length;
     final Uint16List indices = Uint16List(indexCount * 3);
 
-    renderPolys.sort((Triangle? a, Triangle? b){
-      return paintersAlgorithm(a,b);
+    renderPolys.sort((Triangle? a, Triangle? b) {
+      return paintersAlgorithm(a, b);
     });
 
     for (int i = 0; i < indexCount; i++) {
-      if(renderPolys[i] != null){
+      if (renderPolys[i] != null) {
         final int index0 = i * 3;
         final int index1 = index0 + 1;
         final int index2 = index0 + 2;
@@ -537,14 +649,7 @@ class Scene {
         indices[index2] = triangle.vertexes[2];
       }
     }
-    _drwaVert(
-      canvas, 
-      renderMesh.positions, 
-      renderMesh.texcoords,
-      renderMesh.colors, 
-      indices,
-      renderMesh.texture
-    );
+    _drawVert(canvas, renderMesh.positions, renderMesh.texcoords, renderMesh.colors, indices, renderMesh.texture);
     return await recorder.endRecording().toImage(size.width.ceil(), size.height.ceil());
   }
 }

@@ -6,21 +6,19 @@ import 'dart:math' as math;
 import 'package:vector_math/vector_math_64.dart';
 import 'material.dart';
 
-enum SubdivideSurface{Catmull_Clark,Catmull_Clark_Simple}
-enum Shading{Flat,Smooth}
+enum SubdivideSurface { Catmull_Clark, Catmull_Clark_Simple }
 
-class Vertex{
-  Vertex({
-    required this.indicies,
-    required this.vertex
-  });
+enum Shading { Flat, Smooth }
+
+class Vertex {
+  Vertex({required this.indicies, required this.vertex});
 
   List<Vector3> vertex;
   List<Triangle> indicies;
 }
 
-class Triangle{
-  Triangle(this.vertexes,this.normals,this.texture,[this.z = 0, this.showFace = false]);
+class Triangle {
+  Triangle(this.vertexes, this.normals, this.texture, [this.z = 0, this.showFace = false]);
   List<int> vertexes;
   List<int>? normals;
   List<int>? texture;
@@ -39,25 +37,24 @@ class Triangle{
 }
 
 class Mesh {
-  Mesh({
-    List<Vector3>? vertices,
-    List<Vector3>? normals, 
-    List<Offset>? texcoords, 
-    List<Triangle>? indices,
-    List<Color>? colors,
-    this.texture, 
-    Rect? textureRect, 
-    this.texturePath, 
-    Material? material, 
-    this.name
-  }) {
+  Mesh(
+      {List<Vector3>? vertices,
+      List<Vector3>? normals,
+      List<Offset>? texcoords,
+      List<Triangle>? indices,
+      List<Color>? colors,
+      this.texture,
+      Rect? textureRect,
+      this.texturePath,
+      Material? material,
+      this.name}) {
     this.vertices = vertices ?? <Vector3>[];
     this.normals = normals ?? <Vector3>[];
     this.texcoords = texcoords ?? <Offset>[];
     this.colors = colors ?? <Color>[];
     this.indices = indices ?? <Triangle>[];
     this.material = material ?? Material();
-    this.textureRect = textureRect ?? Rect.fromLTWH(0, 0, texture==null?1.0:texture!.width.toDouble(), texture==null?1.0:texture!.height.toDouble());
+    this.textureRect = textureRect ?? Rect.fromLTWH(0, 0, texture == null ? 1.0 : texture!.width.toDouble(), texture == null ? 1.0 : texture!.height.toDouble());
   }
   late List<Vector3> vertices;
   late List<Vector3> normals;
@@ -69,20 +66,56 @@ class Mesh {
   String? texturePath;
   late Material material;
   String? name;
+
+  Float32List? drawingPoints;
+
   /// Calculate new normals using shading types Flat or Smooth
-  void calculateVertexNormals(Shading type){
-    Vertex temp = _calculateVertexNormals(vertices,indices,type);
+  void calculateVertexNormals(Shading type) {
+    Vertex temp = _calculateVertexNormals(vertices, indices, type);
     this.normals = temp.vertex;
   }
+
   /// Remove normals
-  void removeNormals(){
+  void removeNormals() {
     this.normals = [];
   }
+
   /// Remove duplicate verticies from mesh
-  void removeDuplicateVertices(){
+  void removeDuplicateVertices() {
     Vertex temp = _removeDuplicates(vertices, indices);
     this.indices = temp.indicies;
     this.vertices = temp.vertex;
+  }
+
+  bool get hasFace => this.indices.length > 0;
+
+  double get max {
+    double max = 0;
+    for (int i = 0; i < vertices.length; i++) {
+      final storage = vertices[i].storage;
+      final double x = storage[0];
+      final double y = storage[1];
+      final double z = storage[2];
+      if (storage[0] > max) max = storage[0];
+      if (storage[1] > max) max = storage[1];
+      if (storage[2] > max) max = storage[2];
+    }
+    return max;
+  }
+
+  void reNormalize(double max) {
+    double scale = 1 / max;
+    for (int i = 0; i < vertices.length; i++) {
+      vertices[i].scale(scale);
+    }
+  }
+
+  Aabb3 getBounds() {
+    var aabb = Aabb3();
+    for (int i = 0; i < vertices.length; i += 2) {
+      aabb.hullPoint(vertices[i]);
+    }
+    return aabb;
   }
 }
 
@@ -120,17 +153,15 @@ Future<List<Mesh>> buildMesh(
       newNormals = normals;
       newTexcoords = texcoords;
       newTriangles = triangles;
-    } 
-    else
-      _copyRangeIndices(faceStart, faceEnd, vertices, normals, texcoords ,triangles, newVertices, newNormals, newTexcoords, newTriangles);
+    } else
+      _copyRangeIndices(faceStart, faceEnd, vertices, normals, texcoords, triangles, newVertices, newNormals, newTexcoords, newTriangles);
 
     // load texture image from assets.
     final Material? material = (materials != null) ? materials[elementMaterials[index]] : null;
-    final MapEntry<String, Image>? imageEntry = await loadTexture(material, basePath,isAsset: isAsset);
+    final MapEntry<String, Image>? imageEntry = await loadTexture(material, basePath, isAsset: isAsset);
 
     // fix zero texture area
-    if (imageEntry != null) 
-      _remapZeroAreaUVs(newTexcoords, newTriangles, imageEntry.value.width.toDouble(), imageEntry.value.height.toDouble());
+    if (imageEntry != null) _remapZeroAreaUVs(newTexcoords, newTriangles, imageEntry.value.width.toDouble(), imageEntry.value.height.toDouble());
 
     // If a vertex has multiple different texture coordinates,
     // then create a vertex for each texture coordinate.
@@ -151,19 +182,10 @@ Future<List<Mesh>> buildMesh(
 
   return meshes;
 }
+
 /// Copy a mesh from the obj
-void _copyRangeIndices(
-  int start, 
-  int end, 
-  List<Vector3> fromVertices, 
-  List<Vector3> fromNormals, 
-  List<Offset> fromText,
-  List<Triangle> fromIndices, 
-  List<Vector3> toVertices, 
-  List<Vector3> toNormals, 
-  List<Offset> toText,
-  List<Triangle> toIndices
-) {
+void _copyRangeIndices(int start, int end, List<Vector3> fromVertices, List<Vector3> fromNormals, List<Offset> fromText, List<Triangle> fromIndices, List<Vector3> toVertices, List<Vector3> toNormals,
+    List<Offset> toText, List<Triangle> toIndices) {
   if (start < 0 || end > fromIndices.length) return;
   final viMap = List<int?>.filled(fromVertices.length, null);
   final niMap = List<int?>.filled(fromNormals.length, null);
@@ -174,8 +196,8 @@ void _copyRangeIndices(
 
   for (int i = start; i < end; i++) {
     final List<int> newVi = List<int>.filled(fromIndices[i].vertexes.length, 0);
-    final List<int> newNi = processNi?List<int>.filled(fromIndices[i].normals!.length, 0):[];
-    final List<int> newTi = processTi?List<int>.filled(fromIndices[i].texture!.length, 0):[];
+    final List<int> newNi = processNi ? List<int>.filled(fromIndices[i].normals!.length, 0) : [];
+    final List<int> newTi = processTi ? List<int>.filled(fromIndices[i].texture!.length, 0) : [];
 
     final List<int> vi = fromIndices[i].copyVertexes();
     final List<int>? ni = fromIndices[i].copyNormals();
@@ -184,43 +206,37 @@ void _copyRangeIndices(
     for (int j = 0; j < vi.length; j++) {
       //vert
       int indexV = vi[j];
-      int indexN = processNi?ni![j]:0;
-      int indexT = processTi?ti![j]:0;
+      int indexN = processNi ? ni![j] : 0;
+      int indexT = processTi ? ti![j] : 0;
 
       if (indexV < 0) indexV = fromVertices.length - 1 + indexV;
       if (indexN < 0) indexN = fromNormals.length - 1 + indexN;
       if (indexT < 0) indexT = fromText.length - 1 + indexT;
 
       int? v = viMap[indexV];
-      int? n = processNi?niMap[indexN]:null;
-      int? t = processTi?tiMap[indexT]:null;
+      int? n = processNi ? niMap[indexN] : null;
+      int? t = processTi ? tiMap[indexT] : null;
 
       if (v == null) {
         newVi[j] = toVertices.length;
         viMap[indexV] = toVertices.length;
         toVertices.add(fromVertices[indexV]);
-      }
-      else
+      } else
         newVi[j] = v;
-      
-      if(n == null && processNi){
+
+      if (n == null && processNi) {
         newNi[j] = toNormals.length;
         niMap[indexN] = toNormals.length;
         toNormals.add(fromNormals[indexN]);
-      }
-      else if(processNi)
-        newNi[j] = n!;
+      } else if (processNi) newNi[j] = n!;
 
-      if(t == null && processTi){
+      if (t == null && processTi) {
         newTi[j] = toText.length;
         tiMap[indexT] = toText.length;
         toText.add(fromText[indexT]);
-      }
-      else if(processTi)
-        newTi[j] = t!;
-      
+      } else if (processTi) newTi[j] = t!;
     }
-    toIndices.add(Triangle(newVi,newNi,newTi));
+    toIndices.add(Triangle(newVi, newNi, newTi));
   }
 }
 
@@ -239,8 +255,7 @@ void _remapZeroAreaUVs(List<Offset> texcoords, List<Triangle> textureIndices, do
       texcoords.add(Offset(u, v));
       texcoords.add(Offset(u, v1));
       texcoords.add(Offset(u1, v));
-      for(int j = 0; j < p.texture!.length;j++)
-        p.texture![j] = texindex+j;
+      for (int j = 0; j < p.texture!.length; j++) p.texture![j] = texindex + j;
     }
   }
 }
@@ -260,7 +275,7 @@ void _rebuildVertices(List<Vector3> vertices, List<Vector3> normals, List<Offset
     List<int> face = List<int>.filled(vi.length, 0);
     for (int j = 0; j < vi.length; j++) {
       int vIndex = vi[j];
-      int? vnIndex = vn != null?vn[j]:null;
+      int? vnIndex = vn != null ? vn[j] : null;
       int tIndex = ti![j];
       int vtIndex = vIndex * texcoordsCount + tIndex;
       int? v = indexMap[vtIndex];
@@ -268,10 +283,9 @@ void _rebuildVertices(List<Vector3> vertices, List<Vector3> normals, List<Offset
         face[j] = newVertices.length;
         indexMap[vtIndex] = face[j];
         newVertices.add(vertices[vIndex].clone());
-        if(vnIndex!=null)newNormals.add(normals[vnIndex].clone());
+        if (vnIndex != null) newNormals.add(normals[vnIndex].clone());
         newTexcoords.add(texcoords[tIndex]);
-      } 
-      else 
+      } else
         face[j] = v;
     }
     vertexIndices[i].copyFromArray(face);
@@ -279,21 +293,23 @@ void _rebuildVertices(List<Vector3> vertices, List<Vector3> normals, List<Offset
   vertices
     ..clear()
     ..addAll(newVertices);
-  if(newNormals.isNotEmpty)normals
-    ..clear()
-    ..addAll(newNormals);
+  if (newNormals.isNotEmpty)
+    normals
+      ..clear()
+      ..addAll(newNormals);
   texcoords
     ..clear()
     ..addAll(newTexcoords);
 }
 
-Vertex _calculateVertexNormals(List<Vector3> vertices,List<Triangle> indices, Shading shading){
-  if(shading == Shading.Flat)
-    return _calculateFlatVertexNormals(vertices,indices);
+Vertex _calculateVertexNormals(List<Vector3> vertices, List<Triangle> indices, Shading shading) {
+  if (shading == Shading.Flat)
+    return _calculateFlatVertexNormals(vertices, indices);
   else
-    return _calculateSmoothVertexNormals(vertices,indices);
+    return _calculateSmoothVertexNormals(vertices, indices);
 }
-Vertex _calculateFlatVertexNormals(List<Vector3> vertices,List<Triangle> indices){
+
+Vertex _calculateFlatVertexNormals(List<Vector3> vertices, List<Triangle> indices) {
   List<Vector3> vN = [];
   List<Triangle> vertexIndicies = [];
 
@@ -303,44 +319,42 @@ Vertex _calculateFlatVertexNormals(List<Vector3> vertices,List<Triangle> indices
     Vector3 ver1 = vertices[indices[face].vertexes[0]];
     Vector3 ver2 = vertices[indices[face].vertexes[1]];
     Vector3 ver3 = vertices[indices[face].vertexes[2]];
-    List<double> x = [ver1[0],ver2[0],ver3[0]];
-    List<double> y = [ver1[1],ver2[1],ver3[1]];
-    List<double> z = [ver1[2],ver2[2],ver3[2]];
+    List<double> x = [ver1[0], ver2[0], ver3[0]];
+    List<double> y = [ver1[1], ver2[1], ver3[1]];
+    List<double> z = [ver1[2], ver2[2], ver3[2]];
 
-    Vector3 P1 = Vector3(x[0],y[0],z[0]);
-    Vector3 P2 = Vector3(x[1],y[1],z[1]);
-    Vector3 P3 = Vector3(x[2],y[2],z[2]);
+    Vector3 P1 = Vector3(x[0], y[0], z[0]);
+    Vector3 P2 = Vector3(x[1], y[1], z[1]);
+    Vector3 P3 = Vector3(x[2], y[2], z[2]);
 
-    Vector3 V = P2-P1;
-    Vector3 W = P3-P1;
+    Vector3 V = P2 - P1;
+    Vector3 W = P3 - P1;
     Vector3 N = V.cross(W);
 
     faceNormal = N..normalize();
-    
-    return (faceNormal*3)..normalize();
+
+    return (faceNormal * 3)..normalize();
   }
 
-  for(int j = 0; j < indices.length;j++){
+  for (int j = 0; j < indices.length; j++) {
     Vector3 nor = normalizeFace(j);
     vN.add(nor);
-    vertexIndicies.add(
-      Triangle(indices[j].vertexes,[vN.length-1,vN.length-1,vN.length-1],indices[j].texture)
-    );
+    vertexIndicies.add(Triangle(indices[j].vertexes, [vN.length - 1, vN.length - 1, vN.length - 1], indices[j].texture));
   }
 
-  return Vertex(indicies: vertexIndicies,vertex: vN);
+  return Vertex(indicies: vertexIndicies, vertex: vN);
 }
-Vertex _calculateSmoothVertexNormals(List<Vector3> vertices,List<Triangle> indices){
+
+Vertex _calculateSmoothVertexNormals(List<Vector3> vertices, List<Triangle> indices) {
   List<Vector3> vN = [];
   List<Triangle> vertexIndicies = [];
 
-  List<int> findFaces(Vector3 i){
+  List<int> findFaces(Vector3 i) {
     List<int> newInd = [];
-    for(int j = 0; j < indices.length; j++){
-      for(int k = 0; k < indices[j].vertexes.length;k++){
+    for (int j = 0; j < indices.length; j++) {
+      for (int k = 0; k < indices[j].vertexes.length; k++) {
         int location = indices[j].vertexes[k];
-        if(vertices[location] == i)
-          newInd.add(j);
+        if (vertices[location] == i) newInd.add(j);
       }
     }
     return newInd;
@@ -348,20 +362,20 @@ Vertex _calculateSmoothVertexNormals(List<Vector3> vertices,List<Triangle> indic
 
   List<Vector3> normalizeFaces(List<int> faces) {
     List<Vector3> faceNormals = [];
-    for(int i = 0; i < faces.length; i++){
+    for (int i = 0; i < faces.length; i++) {
       Vector3 ver1 = vertices[indices[faces[i]].vertexes[0]];
       Vector3 ver2 = vertices[indices[faces[i]].vertexes[1]];
       Vector3 ver3 = vertices[indices[faces[i]].vertexes[2]];
-      List<double> x = [ver1[0],ver2[0],ver3[0]];
-      List<double> y = [ver1[1],ver2[1],ver3[1]];
-      List<double> z = [ver1[2],ver2[2],ver3[2]];
+      List<double> x = [ver1[0], ver2[0], ver3[0]];
+      List<double> y = [ver1[1], ver2[1], ver3[1]];
+      List<double> z = [ver1[2], ver2[2], ver3[2]];
 
-      Vector3 P1 = Vector3(x[0],y[0],z[0]);
-      Vector3 P2 = Vector3(x[1],y[1],z[1]);
-      Vector3 P3 = Vector3(x[2],y[2],z[2]);
+      Vector3 P1 = Vector3(x[0], y[0], z[0]);
+      Vector3 P2 = Vector3(x[1], y[1], z[1]);
+      Vector3 P3 = Vector3(x[2], y[2], z[2]);
 
-      Vector3 V = P2-P1;
-      Vector3 W = P3-P1;
+      Vector3 V = P2 - P1;
+      Vector3 W = P3 - P1;
       Vector3 N = V.cross(W);
 
       faceNormals.add(N..normalize());
@@ -369,14 +383,13 @@ Vertex _calculateSmoothVertexNormals(List<Vector3> vertices,List<Triangle> indic
     return faceNormals;
   }
 
-  Vector3 vertexNormal(List<Vector3> faceNormals){
+  Vector3 vertexNormal(List<Vector3> faceNormals) {
     Vector3 vn = faceNormals[0];
-    for(int i = 1; i < faceNormals.length; i++)
-      vn += faceNormals[i];
+    for (int i = 1; i < faceNormals.length; i++) vn += faceNormals[i];
     return (vn)..normalize();
   }
 
-  for(int i = 0; i < vertices.length; i++){
+  for (int i = 0; i < vertices.length; i++) {
     List<int> faces = findFaces(vertices[i]);
     List<Vector3> faceNormals = normalizeFaces(faces);
     vN.add(vertexNormal(faceNormals));
@@ -386,33 +399,27 @@ Vertex _calculateSmoothVertexNormals(List<Vector3> vertices,List<Triangle> indic
   return Vertex(indicies: vertexIndicies, vertex: vN);
 }
 
-Vertex _removeDuplicates(List<Vector3> fromVertices,List<Triangle> fromIndices){
+Vertex _removeDuplicates(List<Vector3> fromVertices, List<Triangle> fromIndices) {
   List<Triangle> toIndices = [];
   List<Vector3> toVertices = fromVertices.toSet().toList();
 
-  for(int i = 0; i < fromIndices.length;i++){
+  for (int i = 0; i < fromIndices.length; i++) {
     List<int> vertexes = [];
     List<int> normals = [];
     List<int> texture = [];
-    for(int j = 0; j < fromIndices[i].vertexes.length; j++){
-      for(int k = 0; k < toVertices.length;k++){
-        if(fromVertices[fromIndices[i].vertexes[j]] == toVertices[k]){
+    for (int j = 0; j < fromIndices[i].vertexes.length; j++) {
+      for (int k = 0; k < toVertices.length; k++) {
+        if (fromVertices[fromIndices[i].vertexes[j]] == toVertices[k]) {
           vertexes.add(k);
           texture.add(k);
           normals.add(k);
         }
       }
     }
-    toIndices.add(
-      Triangle(vertexes,normals,texture)
-    );
+    toIndices.add(Triangle(vertexes, normals, texture));
   }
-  return Vertex(
-    vertex: toVertices,
-    indicies: toIndices
-  );
+  return Vertex(vertex: toVertices, indicies: toIndices);
 }
-
 
 /// Calcunormal vector
 Vector3 normalVector(Vector3 a, Vector3 b, Vector3 c) {
@@ -435,7 +442,8 @@ List<Mesh> normalizeMesh(List<Mesh> meshes) {
     }
   }
 
-  maxLength = 0.5 / maxLength;
+  // maxLength = 0.5 / maxLength;
+  maxLength = 1 / maxLength;
   for (Mesh mesh in meshes) {
     final List<Vector3> vertices = mesh.vertices;
     for (int i = 0; i < vertices.length; i++) {
@@ -520,8 +528,7 @@ Future<Image?> packingTexture(List<Mesh> meshes) async {
     if (mesh.texture != null) {
       final Uint32List data = await getImagePixels(mesh.texture!);
       pixels = data.buffer.asUint32List();
-    } 
-    else {
+    } else {
       final int length = imageWidth * imageHeight;
       pixels = Uint32List(length);
       // color mode then set texture to transparent.

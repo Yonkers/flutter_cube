@@ -5,7 +5,8 @@ import 'package:flutter_cube/scene/scene.dart';
 import 'package:flutter/material.dart';
 
 typedef void SceneCreatedCallback(Scene scene);
-enum CubeCallbacks{OnTap,RemoveObject}
+
+enum CubeCallbacks { OnTap, RemoveObject }
 
 class Cube extends StatefulWidget {
   Cube({
@@ -15,14 +16,15 @@ class Cube extends StatefulWidget {
     this.onObjectCreated,
     this.onSceneUpdated,
     this.callback,
+
   }) : super(key: key);
 
   final bool interactive;
   final SceneCreatedCallback? onSceneCreated;
   final ObjectCreatedCallback? onObjectCreated;
   final VoidCallback? onSceneUpdated;
-  final Function({CubeCallbacks call, Offset details})? callback;
-  
+  final Function(CubeCallbacks call, Offset? details)? callback;
+
   @override
   _CubeState createState() => _CubeState();
 }
@@ -34,54 +36,65 @@ class _CubeState extends State<Cube> {
   double _scroll = 1.0;
   double _scale = 0;
   int _mouseType = 0;
-  bool tapped = false;
+  late Offset _hoverPoint;
 
-  void _handleScaleStart(ScaleStartDetails details) {
-    _lastFocalPoint = details.localFocalPoint;
+  void _onTap() {
+    // print('on tap: $_hoverPoint');
     _lastZoom = null;
-  }
-  void _handelPanUpdate(Offset localFocalPoint){
-    scene.camera.panCamera(toVector2(_lastFocalPoint), toVector2(localFocalPoint), 1.5);
+    Offset position = _hoverPoint;
+    scene.updateTapLocation(position);
+    // var clicked = scene.clickedObject();
+    widget.callback?.call(CubeCallbacks.OnTap, _hoverPoint);
   }
 
-  void _handleScaleUpdate(double scale, Offset localFocalPoint, bool pan) {
-    if (_lastZoom == null){
-      _scale = scale;
-      _lastZoom = scene.camera.zoom;
+  void _onScaleStart(ScaleStartDetails details) {
+    _lastFocalPoint = details.localFocalPoint;
+    _lastZoom = scene.camera.zoom;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    // _lastFocalPoint = details.localFocalPoint;
+    bool pan = details.scale == 1.0;
+
+    scene.camera.zoom = _lastZoom! * details.scale;
+    if (_mouseType == kPrimaryMouseButton || !pan) {
+      scene.camera.trackBall(toVector2(_lastFocalPoint), toVector2(details.localFocalPoint), .85);
+    } else if (_mouseType == kSecondaryMouseButton || pan) {
+      _handelPanUpdate(details.localFocalPoint);
     }
-      scene.camera.zoom = _lastZoom !* scale;
-
-    if(_mouseType == 1 || !pan)
-      scene.camera.trackBall(toVector2(_lastFocalPoint), toVector2(localFocalPoint), 1.5);
-    else if(_mouseType == 2 || pan)
-      _handelPanUpdate(localFocalPoint);
-    
-    _lastFocalPoint = localFocalPoint;
+    _lastFocalPoint = details.localFocalPoint;
     setState(() {});
   }
+
+  void _handelPanUpdate(Offset localFocalPoint) {
+    scene.camera.panCamera(toVector2(_lastFocalPoint), toVector2(localFocalPoint), .125);
+  }
+
   @override
   void initState() {
     super.initState();
     scene = Scene(
-      onUpdate: () => setState(() {
-        widget.onSceneUpdated?.call();
-        if(tapped){
-          widget.callback?.call(call: CubeCallbacks.OnTap);
-          tapped = false;
-        }
-      }),
+      // onUpdate: () {
+      // widget.onSceneUpdated?.call();
+      // if (tapped) {
+      //   widget.callback?.call(call: CubeCallbacks.OnTap);
+      //   tapped = false;
+      // }
+      // },
       onObjectCreated: widget.onObjectCreated,
     );
     // prevent setState() or markNeedsBuild called during build
-    WidgetsBinding.instance?.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onSceneCreated?.call(scene);
       _scroll = scene.camera.zoom;
     });
   }
+
   @override
-  void dispose(){
+  void dispose() {
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (BuildContext context, BoxConstraints constraints) {
@@ -93,63 +106,72 @@ class _CubeState extends State<Cube> {
         isComplex: true,
       );
       return widget.interactive
-      ?Listener(
-        onPointerMove: (details){
-          _mouseType = details.buttons;
-        },
-        onPointerHover: (details){
-          if(scene.rayCasting)
-            scene.updateHoverLocation(details.localPosition);
-        },
-        onPointerSignal: (details){
-          if(details is PointerScrollEvent){
-            if (_lastZoom == null)
-              _scroll = _scroll;
-            else
-              if(scene.camera.zoom > 0.5 || details.scrollDelta.dy > 0)
-                _scroll = _scroll+details.scrollDelta.dy*0.01;
-              
-            _lastFocalPoint = details.localPosition;
-            _handleScaleUpdate(_scroll,details.localPosition,false);//_lastFocalPoint
-          }
-        },
-        child: GestureDetector(
-          onScaleStart: _handleScaleStart,
-          onScaleUpdate: (details){
-            bool pan = false;
-            if(_scale < details.scale+0.1 && _scale > details.scale-0.1)
-              pan = true;
-            _handleScaleUpdate(details.scale,details.localFocalPoint, pan);
-          },
-          onTapDown: (TapDownDetails details){
-            _lastZoom = null;
-            scene.updateTapLocation(details.localPosition);
-            tapped = true;
-          },
-          onTapUp: (TapUpDetails details){
+          ? Listener(
+              onPointerMove: (details) {
+                _mouseType = details.buttons;
+              },
+              onPointerHover: (details) {
+                _hoverPoint = details.localPosition;
+                if (scene.rayCasting) scene.updateHoverLocation(details.localPosition);
+              },
+              onPointerSignal: (event) {
+                if (event is PointerScrollEvent) {
+                  final scaleStartDetails = ScaleStartDetails(
+                    focalPoint: event.position,
+                    localFocalPoint: event.localPosition,
+                  );
+                  _onScaleStart(scaleStartDetails);
 
-          },
-          child: customPaint,
-        )
-      )
-      : customPaint;
+                  final double scaleChange = 1.0 - event.scrollDelta.dy / scene.camera.viewportHeight;
+                  if (scaleChange == 0.0) {
+                    return;
+                  }
+                  final scaleUpdateDetails = ScaleUpdateDetails(
+                    focalPoint: event.position,
+                    localFocalPoint: event.localPosition,
+                    rotation: 0.0,
+                    scale: scaleChange,
+                    horizontalScale: scaleChange,
+                    verticalScale: scaleChange,
+                  );
+                  _onScaleUpdate(scaleUpdateDetails);
+                }
+              },
+              child: GestureDetector(
+                trackpadScrollCausesScale: true,
+                onScaleStart: _onScaleStart,
+                onScaleUpdate: _onScaleUpdate,
+                onTapDown: (TapDownDetails details) {
+                  // print('tap down ${details.localPosition}');
+                },
+                onTapUp: (TapUpDetails details) {},
+                onTap: _onTap,
+                child: customPaint,
+              ))
+          : customPaint;
     });
   }
 }
 
 class _CubePainter extends CustomPainter {
   final Scene _scene;
-  const _CubePainter(this._scene);
+  bool _dirty = false;
+  _CubePainter(this._scene) {
+    _scene.controller.addListener(() {
+      _dirty = true;
+    });
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
+    _dirty = false;
     _scene.render(canvas, size);
   }
 
   // We should repaint whenever the board changes, such as board.selected.
   @override
   bool shouldRepaint(_CubePainter oldDelegate) {
-    return true;
+    return _dirty;
   }
 }
 

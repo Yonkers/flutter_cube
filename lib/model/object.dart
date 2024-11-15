@@ -9,6 +9,7 @@ class Object {
     Vector3? position,
     Vector3? rotation,
     Vector3? scale,
+    this.id,
     this.name,
     Mesh? mesh,
     Scene? scene,
@@ -36,48 +37,44 @@ class Object {
     }
     this.scene = scene;
 
-    if(fileName != null && fileType == null)
-      fileType = fileName.split('.')[1];
+    if (fileName != null && fileType == null) fileType = fileName.split('.')[1];
     // load mesh from obj file
     if (fileName != null && fileType != null) {
-      if(fileType == 'obj')
+      if (fileType == 'obj')
         OBJLoader.load(fileName, normalized, isAsset: isAsset).then((List<Mesh> meshes) {
-          if (meshes.length == 1) 
+          if (meshes.length == 1) {
             this.mesh = meshes[0];
-          else if (meshes.length > 1)
-            for (Mesh mesh in meshes) 
-              add(Object(name: mesh.name, mesh: mesh, backfaceCulling: backfaceCulling, lighting: lighting, number: number,showVerts: showVerts));
+            // meshes[0].calculateVertexNormals(Shading.Smooth);
+          } else if (meshes.length > 1) {
+            for (Mesh mesh in meshes) {
+              // mesh.calculateVertexNormals(Shading.Smooth);
+              add(Object(name: mesh.name, mesh: mesh, backfaceCulling: backfaceCulling, lighting: lighting, number: number, showVerts: showVerts));
+            }
+          }
           this.scene?.objectCreated(this);
         });
-      else if(fileType == 'stl')
+      else if (fileType == 'stl')
         STLLoader.load(fileName, normalized, isAsset: isAsset).then((List<Mesh> meshes) {
           if (meshes.length == 1)
             this.mesh = meshes[0];
-          else if (meshes.length > 1)
-            for (Mesh mesh in meshes)
-              add(Object(name: mesh.name, mesh: mesh, backfaceCulling: backfaceCulling, lighting: lighting, number: number,showVerts: showVerts));
+          else if (meshes.length > 1) for (Mesh mesh in meshes) add(Object(name: mesh.name, mesh: mesh, backfaceCulling: backfaceCulling, lighting: lighting, number: number, showVerts: showVerts));
           this.scene?.objectCreated(this);
         });
-      else if(fileType == 'x3d')
+      else if (fileType == 'x3d')
         X3DLoader.load(fileName, normalized, isAsset: isAsset).then((List<Mesh> meshes) {
           if (meshes.length == 1)
             this.mesh = meshes[0];
-          else if (meshes.length > 1)
-            for (Mesh mesh in meshes)
-              add(Object(name: mesh.name, mesh: mesh, backfaceCulling: backfaceCulling, lighting: lighting, number: number,showVerts: showVerts));
+          else if (meshes.length > 1) for (Mesh mesh in meshes) add(Object(name: mesh.name, mesh: mesh, backfaceCulling: backfaceCulling, lighting: lighting, number: number, showVerts: showVerts));
           this.scene?.objectCreated(this);
         });
-      else if(fileType == 'ply')
+      else if (fileType == 'ply')
         PLYLoader.load(fileName, normalized, isAsset: isAsset).then((List<Mesh> meshes) {
           if (meshes.length == 1)
             this.mesh = meshes[0];
-          else if (meshes.length > 1)
-            for (Mesh mesh in meshes)
-              add(Object(name: mesh.name, mesh: mesh, backfaceCulling: backfaceCulling, lighting: lighting, number: number,showVerts: showVerts));
+          else if (meshes.length > 1) for (Mesh mesh in meshes) add(Object(name: mesh.name, mesh: mesh, backfaceCulling: backfaceCulling, lighting: lighting, number: number, showVerts: showVerts));
           this.scene?.objectCreated(this);
         });
-    } 
-    else {
+    } else {
       this.scene?.objectCreated(this);
     }
   }
@@ -90,6 +87,9 @@ class Object {
 
   /// The local scale of this object relative to the parent. Default is Vector3(1.0, 1.0, 1.0). updateTransform after you change the value.
   final Vector3 scale = Vector3(1.0, 1.0, 1.0);
+
+  /// object id
+  String? id;
 
   /// The name of this object.
   String? name;
@@ -137,14 +137,14 @@ class Object {
   final Matrix4 transform = Matrix4.identity();
 
   void updateTransform() {
-    final Matrix4 m = Matrix4.compose(position, Quaternion.euler(radians(rotation.x), radians(rotation.y),radians(rotation.z)), scale);//
+    final Matrix4 m = Matrix4.compose(position, Quaternion.euler(radians(rotation.x), radians(rotation.y), radians(rotation.z)), scale); //
     transform.setFrom(m);
   }
 
-  List<Mesh> _getSeperatedMeshs(){
+  List<Mesh> _getSeperatedMeshs() {
     List<Mesh> allMesh = [];
-    List<Triangle> tempPoly =  mesh.indices;
-    List<Triangle> tri =  [];
+    List<Triangle> tempPoly = mesh.indices;
+    List<Triangle> tri = [];
     List<Color> colors = [];
     List<Vector3> verts = [];
     List<Vector3> nors = [];
@@ -154,68 +154,65 @@ class Object {
 
     int k = 0;
 
-    while(tempPoly.isNotEmpty){
-      void reset(){
-        allMesh.add(
-          Mesh(
-            vertices: verts,
-            normals: nors,
-            texcoords: text,
-            indices: tri,
-            colors: colors,
-            texture: mesh.texture,
-            texturePath: mesh.texturePath,
-            name: mesh.name,
-          )
-        );
-        tri =  [];
+    while (tempPoly.isNotEmpty) {
+      void reset() {
+        allMesh.add(Mesh(
+          vertices: verts,
+          normals: nors,
+          texcoords: text,
+          indices: tri,
+          colors: colors,
+          texture: mesh.texture,
+          texturePath: mesh.texturePath,
+          name: mesh.name,
+        ));
+        tri = [];
         colors = [];
         verts = [];
         nors = [];
         text = [];
         tempIndi = [];
       }
-      void addItems(int j){
-        dynamic getVect<type>(dynamic verts, List<int> indi){
+
+      void addItems(int j) {
+        dynamic getVect<type>(dynamic verts, List<int> indi) {
           dynamic newVerts = [];
-          for(int i = 0; i < indi.length;i++){
+          for (int i = 0; i < indi.length; i++) {
             newVerts.add(verts[indi[i]]);
           }
           return newVerts;
         }
-        getVect(mesh.vertices, tempPoly[j].vertexes).forEach((element) { 
+
+        getVect(mesh.vertices, tempPoly[j].vertexes).forEach((element) {
           verts.add(element);
         });
-        if(mesh.normals.isNotEmpty)
-          getVect(mesh.normals, tempPoly[j].vertexes).forEach((element) { 
+        if (mesh.normals.isNotEmpty)
+          getVect(mesh.normals, tempPoly[j].vertexes).forEach((element) {
             nors.add(element);
           });
-        if(mesh.texcoords.isNotEmpty)
-          getVect(mesh.texcoords, tempPoly[j].vertexes).forEach((element) { 
+        if (mesh.texcoords.isNotEmpty)
+          getVect(mesh.texcoords, tempPoly[j].vertexes).forEach((element) {
             text.add(element);
           });
-        if(mesh.colors.isNotEmpty)
-          getVect(mesh.colors, tempPoly[j].vertexes).forEach((element) { 
+        if (mesh.colors.isNotEmpty)
+          getVect(mesh.colors, tempPoly[j].vertexes).forEach((element) {
             colors.add(element);
           });
-        tri.add(Triangle(
-          [verts.length-3,verts.length-2,verts.length-1], 
-          (nors.isNotEmpty)?[nors.length-3,nors.length-2,nors.length-1]:null, 
-          (text.isNotEmpty)?[text.length-3,text.length-2,text.length-1]:null
-        ));
-        tempPoly[j].vertexes.forEach((element) { 
+        tri.add(Triangle([verts.length - 3, verts.length - 2, verts.length - 1], (nors.isNotEmpty) ? [nors.length - 3, nors.length - 2, nors.length - 1] : null,
+            (text.isNotEmpty) ? [text.length - 3, text.length - 2, text.length - 1] : null));
+        tempPoly[j].vertexes.forEach((element) {
           tempIndi.add(element);
         });
 
-        if(tempPoly.length == 1)
-          reset();
+        if (tempPoly.length == 1) reset();
         tempPoly.removeAt(j);
         k = 0;
       }
-      bool checkforsamevertexes(Triangle tempPoly1){
-        for(int l = 0; l < tempIndi.length; l++){
-          for(int k = 0; k < tempPoly1.vertexes.length; k++){
-            if(tempPoly1.vertexes[k] == tempIndi[l]){
+
+      bool checkforsamevertexes(Triangle tempPoly1) {
+        for (int l = 0; l < tempIndi.length; l++) {
+          for (int k = 0; k < tempPoly1.vertexes.length; k++) {
+            if (tempPoly1.vertexes[k] == tempIndi[l]) {
               k = 0;
               return true;
             }
@@ -223,20 +220,19 @@ class Object {
         }
         return false;
       }
-      
-      if(tri.isEmpty){
+
+      if (tri.isEmpty) {
         addItems(0);
-        tempPoly[0].vertexes.forEach((element) { 
+        tempPoly[0].vertexes.forEach((element) {
           tempIndi.add(element);
         });
       }
 
-      for(int j = tempPoly.length-1; j >= 0; j--){
-        if(checkforsamevertexes(tempPoly[j]))
-          addItems(j);
+      for (int j = tempPoly.length - 1; j >= 0; j--) {
+        if (checkforsamevertexes(tempPoly[j])) addItems(j);
       }
 
-      if(k > 2){
+      if (k > 2) {
         reset();
       }
       k++;
@@ -244,20 +240,12 @@ class Object {
 
     return allMesh;
   }
-  void seperateByLooseParts(){
+
+  void seperateByLooseParts() {
     List<Mesh> newMeshes = _getSeperatedMeshs();
 
-    for(int i = 0; i < newMeshes.length;i++){
-      add(
-        Object(
-          name: name!.split('_')[0]+'_'+i.toString(), 
-          mesh: newMeshes[i], 
-          backfaceCulling: backfaceCulling, 
-          lighting: lighting, 
-          number: number,
-          showVerts: showVerts
-        )
-      );
+    for (int i = 0; i < newMeshes.length; i++) {
+      add(Object(name: name!.split('_')[0] + '_' + i.toString(), mesh: newMeshes[i], backfaceCulling: backfaceCulling, lighting: lighting, number: number, showVerts: showVerts));
     }
 
     name = name!.split('_')[0];
