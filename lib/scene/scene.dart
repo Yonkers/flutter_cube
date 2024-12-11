@@ -258,9 +258,9 @@ class Scene {
 
     //没有顶点，只有坐标
     if (indexCount == 0) {
-      List<double> x = [];
-      List<double> y = [];
-      List<double> z = [];
+      // List<double> x = [];
+      // List<double> y = [];
+      // List<double> z = [];
       Float32List _positions = Float32List(vertexCount * 2);
       for (int i = 0; i < vertexCount; i++) {
         Float64List storage4 = storage(vertices[i], transform);
@@ -268,16 +268,29 @@ class Scene {
         double posx = storage4.length > 3 ? storage4[0] / w : storage4[0] / (viewportWidth / 2) - 1.0;
         double posy = storage4.length > 3 ? storage4[1] / w : -(storage4[1] / (viewportHeight / 2) - 1.0);
         double posz = storage4.length > 3 ? storage4[2] / w : storage4[2] / (camera.far / 2) + 0.1;
-        x.add(posx);
-        y.add(posy);
-        z.add(posz);
+        // x.add(posx);
+        // y.add(posy);
+        // z.add(posz);
         _positions[i * 2] = storage4.length > 3 ? ((1.0 + posx) * viewportWidth / 2) : storage4[0];
         _positions[i * 2 + 1] = storage4.length > 3 ? ((1.0 - posy) * viewportHeight / 2) : storage4[1];
       }
 
+
       if (o is PointsObject) {
         o.mesh.drawingPoints = _positions;
         _tmpPointsObjects.add(o);
+        // if(hoverLocation != null){
+        //   List<int> idx = [];
+        //   for(int i =0; i < _positions.length; i+= 2){
+        //     final dist = hoverLocation! - Offset(_positions[i], _positions[i+1]);
+        //     if(dist.dx <= 3 && dist.dy <= 3){
+        //       idx.add(i);
+        //     }
+        //   }
+          // if(idx.length > 0){
+          //   print('hovering on ${o.name}, ${hoverLocation}');
+          // }
+        // }
       } else if (o is PolygonObject || o is LinesObject) {
         // final bool isFF = x.length > 2 && _isFrontFace(x, y, z);
         // if (!isFF) {

@@ -11,6 +11,7 @@ enum CubeCallbacks { OnTap, RemoveObject }
 class Cube extends StatefulWidget {
   Cube({
     Key? key,
+    this.scene,
     this.interactive = true,
     this.onSceneCreated,
     this.onObjectCreated,
@@ -19,6 +20,7 @@ class Cube extends StatefulWidget {
 
   }) : super(key: key);
 
+  Scene? scene;
   final bool interactive;
   final SceneCreatedCallback? onSceneCreated;
   final ObjectCreatedCallback? onObjectCreated;
@@ -36,15 +38,15 @@ class _CubeState extends State<Cube> {
   double _scroll = 1.0;
   double _scale = 0;
   int _mouseType = 0;
-  late Offset _hoverPoint;
+  Offset? _hoverPoint;
 
   void _onTap() {
     // print('on tap: $_hoverPoint');
+    if(null == _hoverPoint) return;
     _lastZoom = null;
-    Offset position = _hoverPoint;
-    scene.updateTapLocation(position);
+    scene.updateTapLocation(_hoverPoint!);
     // var clicked = scene.clickedObject();
-    widget.callback?.call(CubeCallbacks.OnTap, _hoverPoint);
+    widget.callback?.call(CubeCallbacks.OnTap, _hoverPoint!);
   }
 
   void _onScaleStart(ScaleStartDetails details) {
@@ -73,7 +75,7 @@ class _CubeState extends State<Cube> {
   @override
   void initState() {
     super.initState();
-    scene = Scene(
+    scene = widget.scene ?? Scene(
       // onUpdate: () {
       // widget.onSceneUpdated?.call();
       // if (tapped) {
@@ -85,7 +87,7 @@ class _CubeState extends State<Cube> {
     );
     // prevent setState() or markNeedsBuild called during build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.onSceneCreated?.call(scene);
+      if(widget.scene == null) widget.onSceneCreated?.call(scene);
       _scroll = scene.camera.zoom;
     });
   }

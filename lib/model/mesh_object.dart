@@ -54,6 +54,7 @@ class MeshObject extends Object {
     bool normalized = false,
   }) async {
     mesh = await fromVertices(vertices: vertices, vertexIndices: vertexIndices, colors: colors, normalized: normalized);
+    // mesh.colors = colors;
     if (colors != null && colors.length > 0) {
       mesh.material.diffuse = fromColor(colors.first);
       mesh.material.opacity = colors.first.opacity;
